@@ -6,6 +6,8 @@ volatile uint16_t f_time;
 volatile uint16_t p_time;
 volatile char flag = 0;
 
+volatile uint16_t a, x, b, c;
+
 uint16_t freq;
 uint16_t pw;
 
@@ -16,14 +18,35 @@ int main() {
 
     TCCR1A = TCCR1B = 0;                            // reset timer 1
     TIMSK1 |= (1 << ICIE1);
+    TCCR1B |= (1 << CS10);
 
     sei();
 
 
     while (1) {
-       Serial.print("F: ");
-       Serial.println(15900000 / f_time);
-       delay(1000);
+
+
+        if( a != 0) {
+            Serial.print("A: ");
+            Serial.println(a);
+            Serial.print("B: ");
+            Serial.println(b);
+            Serial.print("C: ");
+            Serial.println(c);
+
+
+            Serial.print("F: ");
+            Serial.println(15900000 / c);
+            Serial.print("D: ");
+            Serial.println(((b) * 100.0) / (c));
+            Serial.println("------------------");
+            a = b = c = flag = 0;
+            delay(1000);
+        } else {
+            a = b = c = flag = 0;
+        }
+
+
     }
 
 
@@ -43,20 +66,18 @@ int main() {
  */
 
 ISR(TIMER1_CAPT_vect) {
-    c_timer = ICR1;
-    if(c_timer == 0) {
-        TCCR1B |= (1 << CS10) | (1 << ICES1);
+    x = ICR1;
+    if(flag == 0) {
+        a = x;
+    } else if(flag == 1) {
+        b = x - a;
+    } else if(flag == 2) {
+        c = x - a;
+    } else {
+        flag = 3;
     }
-    else if(TCCR1B & (1 << ICES1)) {
-        p_time = c_timer;
-        TCCR1B &= ~(1 << ICES1);
-        TIFR1 |= (1 << ICF1);
-    }
-    else {
-        TCCR1B &= ~(1 << CS10);
-        TCNT1 = 0;
-        f_time = c_timer;
-    }
+    flag++;
+    TCCR1B ^= (1 << ICES1);
 }
 
 /**
