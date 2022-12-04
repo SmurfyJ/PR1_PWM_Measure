@@ -1,164 +1,86 @@
 #include <avr/interrupt.h>
 #include <Arduino.h>
 
-volatile uint16_t c_timer;
-volatile uint16_t f_time;
-volatile uint16_t p_time;
-volatile char flag = 0;
+volatile uint16_t timings[4];
+volatile uint8_t state = 0;
 
-volatile uint16_t a, x, b, c;
+uint32_t current_time;
 
-uint16_t freq;
-uint16_t pw;
+double frequency;
+double pulsewidth;
 
 int main() {
 
-    init();
+    init();                                         // Für Serial
     Serial.begin(9600);
 
+
     TCCR1A = TCCR1B = 0;                            // reset timer 1
-    TIMSK1 |= (1 << ICIE1);
-    TCCR1B |= (1 << CS10);
+    TIMSK1 |= (1 << ICIE1);                         // edge detection
+    TCCR1B |= (1 << CS10);                          // prescaler = 1
 
-    sei();
-
+    sei();                                          // enable interrupts
 
     while (1) {
-
-
-        if( a != 0) {
-            Serial.print("A: ");
-            Serial.println(a);
-            Serial.print("B: ");
-            Serial.println(b);
-            Serial.print("C: ");
-            Serial.println(c);
-
-
-            Serial.print("F: ");
-            Serial.println(15900000 / c);
-            Serial.print("D: ");
-            Serial.println(((b) * 100.0) / (c));
-            Serial.println("------------------");
-            a = b = c = flag = 0;
-            delay(1000);
-        } else {
-            a = b = c = flag = 0;
-        }
-
-
-    }
-
-
-
-}
-
-/*
- * Fang bei erster Flanke das Zählen an
- * Zweite Flanke -> Counter ist Frequenz (Formel)
- * Reset Timer
- *
- * Fang bei erster Flanke das Zählen an und Wechsel Flanke
- * Zweite Flanke -> Counter ist Tastgrad (Formel)
- * Reset Timer
- *
- *
- */
-
-ISR(TIMER1_CAPT_vect) {
-    x = ICR1;
-    if(flag == 0) {
-        a = x;
-    } else if(flag == 1) {
-        b = x - a;
-    } else if(flag == 2) {
-        c = x - a;
-    } else {
-        flag = 3;
-    }
-    flag++;
-    TCCR1B ^= (1 << ICES1);
-}
 
 /**
-* #include <avr/interrupt.h>
-#include <Arduino.h>
+ * Zeitabfrage mit millis bzw. _delay_ms können die Flankenerkennung stören. delay verursacht am wenigsten Probleme.
+ * Nutzung von Timer0 zur Ausgabe mit ca. 1 Hz kann auch die Erkennung stören, falls wir bei einer Flanke in der ISR sind...
+ *
+ * Für delay:
+ *  - Zeile 39 auskommentieren
+ *  - Zeilen 40, 64 einkommentieren
+ *
+ *  Für millis:
+ *  - Zeile 39 einkommentieren
+ *  - Zeilen 40,64 auskommentieren
+ */
 
-volatile uint16_t current_count[17][2];
-volatile uint8_t cnt = 0;
+//        if ((millis() > current_time + 1000)) {
+        if (1) {                                                                                            // Nur zum testen
 
-uint16_t freq;
-uint16_t pw;
+            if ((state == 3) && (timings[0] != 0)) {                                                        // Wenn alle 3 Werte aktualisiert sind und der Zeitpunkt der ersten Flanke nicht bei 0 liegt (bug?)
 
-int main() {
+                cli();                                                                                      // Interrupts ausschalten
 
-    init();
-    Serial.begin(9600);
+                frequency = (16000000.0 / (timings[2] - timings[0]));                                       // Berechnung der Frequenz aus den beiden Steigenden Flanken
+                pulsewidth = 100 * (1.0 * (timings[1] - timings[0]) / (timings[2] - timings[0]));           // Berechnung des Tastgrades aus Verhältnis von Ton zu Toff
 
-    TCCR1A = TCCR1B = 0;                            // reset timer 1
-    TCCR1B |= (1 << CS00);                          // Prescale 1
-//    TCCR1C |= (1 << ICES1);    //   // | (1 <<ICNC) = Noise Canceler
-    TIMSK1 |= (1 << ICIE1);
+                /* Ausgabe */
+                Serial.print("Frequenz: ");
+                Serial.print(frequency);
+                Serial.println(" Hz");
+                Serial.print("Tastgrad: ");
+                Serial.print(pulsewidth);
+                Serial.println(" %");
+                Serial.println("------------------");
 
-    sei();
+                state = 0;                                                                                  // Status der Messung zurücksetzen
+                current_time = millis();
 
-    while (1) {
+                TCCR1B |= (1 << ICES1);                                                                     // Flankenerkennung festlegen (sonst gibt es Fehler beim Ausgeben des Tastgrades)
+                sei();                                                                                      // Interrupts aktivieren
 
-        if(cnt == 4) {
-            cli();
-            freq = 0;
-            pw = 0;
-            for (int i = 0; i < 16; ++i) {
-                freq += (current_count[i][0] - current_count[i+1][0]);
-                pw += (current_count[i][0] - current_count[i][1]);
-                Serial.print("Rising ");
-                Serial.print(i);
-                Serial.print(": ");
-                Serial.println(current_count[i][0]);
-                Serial.print("Falling ");
-                Serial.print(i);
-                Serial.print(": ");
-                Serial.println(current_count[i][1]);
+                delay(1000);                                                                            // delay ist schlecht (blockiert), macht aber bei hohen Frequenzen die wenigsten Probleme
+
             }
-            Serial.print("T on 0: ");
-            Serial.println(current_count[0][0] - current_count[0][1]);
 
-            Serial.print("T on 1: ");
-            Serial.println(current_count[1][0] - current_count[1][1]);
-
-            Serial.print("T0 0 - 1: ");
-            Serial.println(current_count[1][0] - current_count[0][0]);
-
-            Serial.print("T1 0 - 1: ");
-            Serial.println(current_count[1][1] - current_count[0][1]);
-
-            Serial.print("Freq: ");
-            Serial.println(freq / 16);
-            Serial.print("PW: ");
-            Serial.println(pw / 16);
-
-            Serial.println("--------------");
-
-            cnt = 0;
-
-            sei();
-
-            delay(2000);
         }
 
     }
 
-
-
 }
 
 ISR(TIMER1_CAPT_vect) {
-    current_count[cnt%4][!!(TCCR1B & (1 << ICES1))] = ICR1;
-    TCCR1B ^= (1 << ICES1);
-    TIFR1 |= (1 << ICF1);
-    cnt += !!(TCCR1B & (1 << ICES1));
-    if(cnt >= 17) {
-        cli();
+
+    timings[state] = ICR1;                                                                                  // Liest den aktuellen Timerstand aus. state == 1: erste Flanke, state == 2: zweite Flanke, state == 3: dritte Flanke
+    TCCR1B ^= (1 << ICES1);                                                                                 // Ändert die Flankenerkennung
+
+    if (state != 3) {
+        state++;
+    } else {                                                                                                // Wenn die drei Flanken gemessen wurden
+        state = 0;                                                                                          // Status zurücksetzen (damit es keine Ausgabe bei unvollständiger Messung gibt)
+        TCNT1 = 0;                                                                                          // Reset Timerstand. Weniger Fehler bei hohen Frequenzen, eine Flanke wird trotzdem ab und zu übersprungen
     }
+
 }
-*/
