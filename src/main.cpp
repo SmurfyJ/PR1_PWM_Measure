@@ -17,6 +17,7 @@ int main() {
 
     TCCR1A = TCCR1B = 0;                            // reset timer 1
     TIMSK1 |= (1 << ICIE1);                         // edge detection
+    TIMSK1 |= (1 << TOIE1);                         // Test overflow reset
     TCCR1B |= (1 << CS10);                          // prescaler = 1
 
     sei();                                          // enable interrupts
@@ -36,8 +37,8 @@ int main() {
  *  - Zeilen 40,64 auskommentieren
  */
 
-//        if ((millis() > current_time + 1000)) {
-        if (1) {                                                                                            // Nur zum testen
+        if ((millis() > current_time + 1000)) {
+//        if (1) {                                                                                            // Nur zum testen
 
             if ((state == 3) && (timings[0] != 0)) {                                                        // Wenn alle 3 Werte aktualisiert sind und der Zeitpunkt der ersten Flanke nicht bei 0 liegt (bug?)
 
@@ -58,10 +59,11 @@ int main() {
                 state = 0;                                                                                  // Status der Messung zurücksetzen
                 current_time = millis();
 
-                TCCR1B |= (1 << ICES1);                                                                     // Flankenerkennung festlegen (sonst gibt es Fehler beim Ausgeben des Tastgrades)
+//                TCCR1B |= (1 << ICES1);                                                                     // Flankenerkennung festlegen (sonst gibt es Fehler beim Ausgeben des Tastgrades)
+//                while (! (TCCR1B & (1 << ICES1)));                                                          // Auf bit warten, sonst Probleme mit D% ---
                 sei();                                                                                      // Interrupts aktivieren
 
-                delay(1000);                                                                            // delay ist schlecht (blockiert), macht aber bei hohen Frequenzen die wenigsten Probleme
+//                delay(1000);                                                                            // delay ist schlecht (blockiert), macht aber bei hohen Frequenzen die wenigsten Probleme
 
             }
 
@@ -81,6 +83,11 @@ ISR(TIMER1_CAPT_vect) {
     } else {                                                                                                // Wenn die drei Flanken gemessen wurden
         state = 0;                                                                                          // Status zurücksetzen (damit es keine Ausgabe bei unvollständiger Messung gibt)
         TCNT1 = 0;                                                                                          // Reset Timerstand. Weniger Fehler bei hohen Frequenzen, eine Flanke wird trotzdem ab und zu übersprungen
+//        TCCR1B |= (1 << ICES1);                                                                             // Flanke festlegen, sonst kann es (selten) zum Fehler beim D% kommen || Bringt nichts?! ||
     }
 
+}
+
+ISR(TIMER1_OVF_vect) {
+    state = 0;
 }
